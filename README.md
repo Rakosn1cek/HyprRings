@@ -2,6 +2,8 @@
 
 A minimalist, hardware-accelerated workspace dashboard and system telemetry overlay engineered specifically for the Hyprland compositor. Utilising GTK3, GtkLayerShell, and pure Cairo vector rendering. HyprRings provides a lightweight, low-overhead interactive ring layout to manage workspace layouts, execute system tasks, and monitor hardware metrics directly from the desktop layer.
 
+![HyprRings Preview](assets/HyprRings.png)
+
 ### Features
 - Interactive circular ring layout mapping active workspaces, power profiles, and custom utilities.
 - Real-time hardware telemetry tracking CPU utilization, memory usage, battery state, core temperatures, and wireless connectivity.
