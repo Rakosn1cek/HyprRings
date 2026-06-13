@@ -81,7 +81,7 @@ class WorkspaceDashboard(Gtk.Window):
         self.lunar_icon = "󰽚"
         self.week_num_str = "24"
         
-        self.groups_manifest = ["inner_core", "workspaces", "specials", "battery_profile", "volume_hud", "brightness_hud", "custom_tasks"]
+        self.groups_manifest = ["inner_core", "workspaces", "battery_profile", "volume_hud", "brightness_hud", "custom_tasks"]
         self.active_group_idx = 0  
         self.internal_option_idx = 0 
         self.selected_target = None
@@ -98,7 +98,7 @@ class WorkspaceDashboard(Gtk.Window):
             ("󱫉", "clip", f"python3 {self.home}/custom-scripts/Python-Widgets/clipbox-widget2.py")
         ]
 
-        self.groups_manifest = ["inner_core", "workspaces", "specials", "battery_profile", "power_menu", "volume_hud", "brightness_hud", "custom_tasks"]
+        self.groups_manifest = ["inner_core", "workspaces", "battery_profile", "power_menu", "volume_hud", "brightness_hud", "custom_tasks"]
         self.active_group_idx = 0  
         self.internal_option_idx = 0 
         self.selected_target = None 
@@ -126,6 +126,7 @@ class WorkspaceDashboard(Gtk.Window):
         self.uptime_str = "0h 0m"
         self.last_cpu_idle = 0
         self.last_cpu_total = 0
+        self.zoom_factor = 1.0
         
         # Strict layout mask allocation to catch all hardware events
         self.set_events(Gdk.EventMask.POINTER_MOTION_MASK | Gdk.EventMask.KEY_PRESS_MASK | Gdk.EventMask.BUTTON_PRESS_MASK)
@@ -170,8 +171,6 @@ class WorkspaceDashboard(Gtk.Window):
             ]
         elif group_name == "workspaces":
             return [str(ws_id) for ws_id in sorted(list(self.workspaces_data.keys()))]
-        elif group_name == "specials":
-            return [f"sp:{ws_name}" for ws_name in sorted(list(self.special_workspaces.keys()))] if self.special_workspaces else ["sp:none"]
         elif group_name == "battery_profile":
             return ["profile:powersave", "profile:performance"]
         elif group_name == "power_menu":
@@ -229,7 +228,7 @@ class WorkspaceDashboard(Gtk.Window):
             self.week_num_str, self.sunrise_str, self.sunset_str, self.lunar_phase_str, self.lunar_illum_pct, self.lunar_icon = telemetry.calculate_astronomy_data()
             
         # Postpone the mapping and drawing sequence to let rapid compositor events settle
-        GLib.timeout_add(200, self.trigger_delayed_mapping)
+        GLib.timeout_add(500, self.trigger_delayed_mapping)
         return True
 
     # Synchronise navigation paths and execute the canvas redraw after the wait time expires
@@ -491,6 +490,13 @@ class WorkspaceDashboard(Gtk.Window):
                 is_selected = self.selected_target == str(ws_id)
                 is_active = ws_id == self.active_workspace_id
                 
+                # Apply the matrix scale transformation if the workspace is selected
+                if is_selected and self.zoom_factor > 1.0:
+                    cr.save()
+                    cr.translate(nx, ny)
+                    cr.scale(self.zoom_factor, self.zoom_factor)
+                    cr.translate(-nx, -ny)
+                
                 if is_selected:
                     cr.set_source_rgba(166/255.0, 227/255.0, 161/255.0, 1.0)
                     cr.set_line_width(3.0)
@@ -539,6 +545,10 @@ class WorkspaceDashboard(Gtk.Window):
                 
                 apps_string = ", ".join(apps) if apps else "empty spatial slot"
                 self.render_text(cr, bx + int(14 * z_scale), by + int(44 * z_scale), w - int(28 * z_scale), 38, apps_string[:28], f"SansSerif {max(5, int(9 * z_scale))}", self.colors["hint"])
+                
+                # Restore the canvas matrix state before processing subsequent loop items
+                if is_selected and self.zoom_factor > 1.0:
+                    cr.restore()
                 
             elif item_type == "sp":
                 ws_name = item[2]
@@ -934,15 +944,12 @@ class WorkspaceDashboard(Gtk.Window):
             
             subprocess.run(["hyprctl", "eval", lua_expr])
             
-        elif target.startswith("sp:"):
-            ws_name = target.replace("sp:special:", "").replace("sp:", "")
-            subprocess.run(["hyprctl", "dispatch", "togglespecialworkspace", ws_name])
-            
         else:
-            subprocess.run(["hyprctl", "dispatch", "workspace", target])
-            
-        self.queue_draw()
-
+            lua_expr = f'hl.dispatch(hl.dsp.focus({{ workspace = "{target}" }}))'
+            subprocess.run(["hyprctl", "eval", lua_expr])
+            self.queue_draw()
+            return
+        
     def on_key_press(self, widget, event):
         keyval = event.keyval
         keyname = Gdk.keyval_name(keyval)
@@ -975,6 +982,18 @@ class WorkspaceDashboard(Gtk.Window):
         elif keyname in ("Left", "Up"):
             self.internal_option_idx -= 1
             self.synchronize_navigation_targets()
+            self.queue_draw()
+            return True
+
+        elif keyname in ("equal", "plus"):
+            # Increase the view scale factor for the active selection box
+            self.zoom_factor = min(2.0, self.zoom_factor + 0.25)
+            self.queue_draw()
+            return True
+            
+        elif keyname == "minus":
+            # Decrease the view scale factor back toward the standard dimension
+            self.zoom_factor = max(1.0, self.zoom_factor - 0.25)
             self.queue_draw()
             return True
             
