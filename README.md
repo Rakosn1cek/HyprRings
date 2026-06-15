@@ -5,7 +5,7 @@ A minimalist, hardware-accelerated workspace dashboard and system telemetry over
 ![HyprRings Preview](assets/HyprRings.png)
 
 ### Features
-- Interactive circular ring layout mapping active workspaces, power profiles, and custom utilities.
+- Interactive circular ring layout mapping active workspaces including specials, power profiles, and custom utilities.
 - Real-time hardware telemetry tracking CPU utilization, memory usage, battery state, core temperatures, and wireless connectivity.
 - Desktop environment control integration including display backlight manipulation via brightnessctl and audio stream management via wireplumber.
 - Native compositor command routing utilizing direct dispatch commands, completely bypassing heavy evaluation pipelines.
@@ -48,7 +48,7 @@ wireplumber (for wpctl audio adjustments)
 ### Configuration
 Workspace rings and custom operational tools hook directly into the interface handlers. Standard workspace tracking maps automatically to the active viewport arrangement, while dedicated special workspaces like the standard scratchpad are toggled dynamically using native compositor API instructions.
 
-> *NOTE: The Custom Launcher has hard-coded personal tools in it. If you want to use your own, you will need to change them in the `interface.py`.* 
+> *NOTE: The Custom Launcher has hard-coded personal tools in it. If you want to use your own, you will need to change them in the interface.py. Also, special:minimize workspace is using standalone script hypr-minimize.py available from my dotfiles.* 
 
 ## Warning
 This project is strictly personal and in active development. If you decide to use it and something is not working on your machine, you can open an Issue and I will try to help. 

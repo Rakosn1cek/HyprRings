@@ -1,7 +1,7 @@
 # ---------------------------------------
 # HyprRings - Interface Module
 # Author: Lukas Grumlik (Rakosn1cek)
-# Version: 0.1.0
+# Version: 0.2.0
 # ---------------------------------------
 
 import sys
@@ -21,7 +21,7 @@ import config
 import animation
 import telemetry
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 class WorkspaceDashboard(Gtk.Window):
     def __init__(self):
@@ -81,7 +81,7 @@ class WorkspaceDashboard(Gtk.Window):
         self.lunar_icon = "󰽚"
         self.week_num_str = "24"
         
-        self.groups_manifest = ["inner_core", "workspaces", "battery_profile", "volume_hud", "brightness_hud", "custom_tasks"]
+        self.groups_manifest = ["inner_core", "workspaces", "specials", "battery_profile", "volume_hud", "brightness_hud", "custom_tasks"]
         self.active_group_idx = 0  
         self.internal_option_idx = 0 
         self.selected_target = None
@@ -96,12 +96,7 @@ class WorkspaceDashboard(Gtk.Window):
             ("󱆟", "keys", f"kitty --class keybinds -e {self.home}/custom-scripts/Shell-Widgets/keybinds.sh"),
             ("󰬈", "alias", f"kitty --class show-aliases -e {self.home}/custom-scripts/Show-Aliases/show-aliases.sh"),
             ("󱫉", "clip", f"python3 {self.home}/custom-scripts/Python-Widgets/clipbox-widget2.py")
-        ]
-
-        self.groups_manifest = ["inner_core", "workspaces", "battery_profile", "power_menu", "volume_hud", "brightness_hud", "custom_tasks"]
-        self.active_group_idx = 0  
-        self.internal_option_idx = 0 
-        self.selected_target = None 
+        ] 
         
         # Power management action triggers
         self.power_actions = [
@@ -181,6 +176,8 @@ class WorkspaceDashboard(Gtk.Window):
             return ["hw:bright:up", "hw:bright:down"]
         elif group_name == "custom_tasks":
             return [f"task:{t[1]}" for t in self.custom_tools]
+        elif group_name == "specials":
+            return [f"sp:{ws_name}" for ws_name in sorted(list(self.special_workspaces.keys()))]
         return []
 
     def synchronize_navigation_targets(self):
@@ -943,6 +940,12 @@ class WorkspaceDashboard(Gtk.Window):
                 lua_expr = f'hl.workspace_rule({{ workspace = "{self.active_workspace_id}", layout = "{layout_name}" }})'
             
             subprocess.run(["hyprctl", "eval", lua_expr])
+            return
+
+        elif target.startswith("sp:"):
+            if "minimize" in target:
+                subprocess.Popen(["python3", os.path.expanduser("~/.config/hypr/scripts/hypr-minimize.py"), "restore"], start_new_session=True)
+            return
             
         else:
             lua_expr = f'hl.dispatch(hl.dsp.focus({{ workspace = "{target}" }}))'

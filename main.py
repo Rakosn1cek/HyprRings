@@ -1,7 +1,7 @@
 # --------------------------------------
 # HyprRings - Main Entry Point
 # Author: Lukas Grumlik (Rakosn1cek)
-# Version: 0.1.0
+# Version: 0.2.0
 # --------------------------------------
 
 import sys
@@ -13,7 +13,7 @@ gi.require_version('GtkLayerShell', '0.1')
 from gi.repository import Gtk
 from interface import WorkspaceDashboard
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 if __name__ == "__main__":
     win = WorkspaceDashboard()
