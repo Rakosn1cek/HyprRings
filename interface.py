@@ -32,7 +32,6 @@ class WorkspaceDashboard(Gtk.Window):
         GtkLayerShell.set_layer(self, GtkLayerShell.Layer.BOTTOM)
         GtkLayerShell.set_exclusive_zone(self, 0)
         
-        # Switch keyboard mode to allow event mapping when background workspace is selected
         GtkLayerShell.set_keyboard_mode(self, GtkLayerShell.KeyboardMode.ON_DEMAND)
         
         GtkLayerShell.set_anchor(self, GtkLayerShell.Edge.TOP, True)
@@ -81,7 +80,7 @@ class WorkspaceDashboard(Gtk.Window):
         self.lunar_icon = "󰽚"
         self.week_num_str = "24"
         
-        self.groups_manifest = ["inner_core", "workspaces", "specials", "battery_profile", "volume_hud", "brightness_hud", "custom_tasks"]
+        self.groups_manifest = ["inner_core", "workspaces", "specials", "power_menu", "battery_profile", "volume_hud", "brightness_hud", "custom_tasks"]
         self.active_group_idx = 0  
         self.internal_option_idx = 0 
         self.selected_target = None
@@ -98,7 +97,6 @@ class WorkspaceDashboard(Gtk.Window):
             ("󱫉", "clip", f"python3 {self.home}/custom-scripts/Python-Widgets/clipbox-widget2.py")
         ] 
         
-        # Power management action triggers
         self.power_actions = [
             ("󰐥", "shutdown", "shutdown now"),
             ("󰑐", "reboot", "reboot"),
@@ -123,7 +121,6 @@ class WorkspaceDashboard(Gtk.Window):
         self.last_cpu_total = 0
         self.zoom_factor = 1.0
         
-        # Strict layout mask allocation to catch all hardware events
         self.set_events(Gdk.EventMask.POINTER_MOTION_MASK | Gdk.EventMask.KEY_PRESS_MASK | Gdk.EventMask.BUTTON_PRESS_MASK)
         self.connect("draw", self.on_draw)
         self.connect("motion-notify-event", self.on_mouse_move)
@@ -157,6 +154,26 @@ class WorkspaceDashboard(Gtk.Window):
         cr.move_to(x, y)
         PangoCairo.show_layout(cr, layout)
         cr.restore()
+
+    def refresh_telemetry(self):
+        self.colors = config.load_system_theme()
+                
+        self.active_workspace_id, self.total_windows_count, self.workspaces_data, self.special_workspaces = telemetry.fetch_system_state()
+        self.cpu_usage, self.last_cpu_idle, self.last_cpu_total, self.ram_usage, self.battery_percent, \
+        self.battery_detailed_info, self.uptime_str, self.power_profile, self.volume_level, \
+        self.brightness_level, self.tracker_status_str, self.core_temp, self.wifi_connected, \
+        self.bt_connected = telemetry.fetch_hardware_metrics(self.last_cpu_idle, self.last_cpu_total)
+        
+        if datetime.datetime.now().second == 0 and datetime.datetime.now().minute == 0:
+            self.week_num_str, self.sunrise_str, self.sunset_str, self.lunar_phase_str, self.lunar_illum_pct, self.lunar_icon = telemetry.calculate_astronomy_data()
+            
+        GLib.timeout_add(500, self.trigger_delayed_mapping)
+        return True
+
+    def trigger_delayed_mapping(self):
+        self.synchronize_navigation_targets()
+        self.queue_draw()
+        return False
 
     def get_options_for_group(self, group_name):
         if group_name == "inner_core":
@@ -212,28 +229,6 @@ class WorkspaceDashboard(Gtk.Window):
         except Exception:
             pass
 
-    def refresh_telemetry(self):
-        self.colors = config.load_system_theme()
-                
-        self.active_workspace_id, self.total_windows_count, self.workspaces_data, self.special_workspaces = telemetry.fetch_system_state()
-        self.cpu_usage, self.last_cpu_idle, self.last_cpu_total, self.ram_usage, self.battery_percent, \
-        self.battery_detailed_info, self.uptime_str, self.power_profile, self.volume_level, \
-        self.brightness_level, self.tracker_status_str, self.core_temp, self.wifi_connected, \
-        self.bt_connected = telemetry.fetch_hardware_metrics(self.last_cpu_idle, self.last_cpu_total)
-        
-        if datetime.datetime.now().second == 0 and datetime.datetime.now().minute == 0:
-            self.week_num_str, self.sunrise_str, self.sunset_str, self.lunar_phase_str, self.lunar_illum_pct, self.lunar_icon = telemetry.calculate_astronomy_data()
-            
-        # Postpone the mapping and drawing sequence to let rapid compositor events settle
-        GLib.timeout_add(500, self.trigger_delayed_mapping)
-        return True
-
-    # Synchronise navigation paths and execute the canvas redraw after the wait time expires
-    def trigger_delayed_mapping(self):
-        self.synchronize_navigation_targets()
-        self.queue_draw()
-        return False
-
     def project_hybrid_point(self, cx, cy, radius, base_angle):
         angle = base_angle + self.rotation_offset
         x3d = radius * math.cos(angle)
@@ -269,6 +264,26 @@ class WorkspaceDashboard(Gtk.Window):
             self.draw_rounded_rectangle(cr, x, y + 20, fill, 5, 2)
             cr.fill()
 
+    def draw_curved_orbit_panel(self, cr, cx, cy, inner_radius, outer_radius, start_angle, end_angle, border_color, container_focused=False):
+        cr.save()
+        cr.set_line_join(cairo.LINE_JOIN_ROUND)
+        cr.set_antialias(cairo.ANTIALIAS_BEST)
+        
+        cr.new_sub_path()
+        cr.arc(cx, cy, outer_radius, start_angle, end_angle)
+        cr.line_to(cx + inner_radius * math.cos(end_angle), cy + inner_radius * math.sin(end_angle))
+        cr.arc_negative(cx, cy, inner_radius, end_angle, start_angle)
+        cr.line_to(cx + outer_radius * math.cos(start_angle), cy + outer_radius * math.sin(start_angle))
+        cr.close_path()
+        
+        bg_filled = list(self.colors["bg"])
+        bg_filled[3] = 0.92 if bg_filled[3] < 0.6 else 0.82
+        cr.set_source_rgba(*bg_filled)
+        cr.fill()
+        
+        # Border stroke operation completely stripped out to give the half moons a borderless profile
+        cr.restore()
+
     def draw_corner_bounding_box(self, cr, x, y, width, height, border_color, container_focused=False):
         if container_focused:
             cr.set_source_rgba(166/255.0, 227/255.0, 161/255.0, 1.0)
@@ -281,7 +296,7 @@ class WorkspaceDashboard(Gtk.Window):
         cr.stroke_preserve()
         
         bg_filled = list(self.colors["bg"])
-        bg_filled[3] = 0.92 if bg_filled[3] < 0.6 else 0.82
+        bg_filled[3] = 0.2 if bg_filled[3] < 0.6 else 0.82
         cr.set_source_rgba(*bg_filled)
         cr.fill()
 
@@ -346,7 +361,6 @@ class WorkspaceDashboard(Gtk.Window):
         self.drawer.drawer_open = not self.drawer.drawer_open
         self.drawer.last_frame_time = time.perf_counter()
         
-        # Spawn a localised frame clock loop if it is not currently active
         if not getattr(self, "anim_running", False):
             self.anim_running = True
             GLib.timeout_add(16, self.animate_drawer)
@@ -365,9 +379,6 @@ class WorkspaceDashboard(Gtk.Window):
         cx = self.get_allocated_width() // 2
         cy = self.get_allocated_height() // 2
         
-        # cr.set_source_rgba(*self.colors["bg"])
-        # cr.paint()
-       
         cr.set_source_rgba(0.0, 0.0, 0.0, 0.0)
         cr.set_operator(cairo.Operator.SOURCE)
         cr.paint()
@@ -487,7 +498,6 @@ class WorkspaceDashboard(Gtk.Window):
                 is_selected = self.selected_target == str(ws_id)
                 is_active = ws_id == self.active_workspace_id
                 
-                # Apply the matrix scale transformation if the workspace is selected
                 if is_selected and self.zoom_factor > 1.0:
                     cr.save()
                     cr.translate(nx, ny)
@@ -543,7 +553,6 @@ class WorkspaceDashboard(Gtk.Window):
                 apps_string = ", ".join(apps) if apps else "empty spatial slot"
                 self.render_text(cr, bx + int(14 * z_scale), by + int(44 * z_scale), w - int(28 * z_scale), 38, apps_string[:28], f"SansSerif {max(5, int(9 * z_scale))}", self.colors["hint"])
                 
-                # Restore the canvas matrix state before processing subsequent loop items
                 if is_selected and self.zoom_factor > 1.0:
                     cr.restore()
                 
@@ -586,8 +595,11 @@ class WorkspaceDashboard(Gtk.Window):
         hud_pen_color = list(self.colors["accent"])
         hud_pen_color[3] = 0.39
         
-        tl_x, tl_y = 30, 30
-        self.draw_corner_bounding_box(cr, tl_x, tl_y, self.hud_width, self.hud_base_height, hud_pen_color, False)
+        # Draw Left Half Moon (Border line weight logic bypassed)
+        self.draw_curved_orbit_panel(cr, cx, cy, 580, 840, 145 * math.pi / 180, 215 * math.pi / 180, hud_pen_color, False)
+        
+        # Position adjusted to center the text blocks inside the curved hull lane perfectly (cx - 825)
+        tl_x, tl_y = cx - 825, cy - 170
         self.render_text(cr, tl_x + 14, tl_y + 10, 150, 15, "  SYSTEM STATUS", "JetBrainsMono NF Bold 9", self.colors["accent"])
         self.draw_hud_bar(cr, tl_x + 14, tl_y + 28, self.hud_width - 28, "CPU", self.cpu_usage, (166/255.0, 227/255.0, 161/255.0, 1.0))
         self.draw_hud_bar(cr, tl_x + 14, tl_y + 58, self.hud_width - 28, "RAM", self.ram_usage, (249/255.0, 226/255.0, 175/255.0, 1.0))
@@ -595,13 +607,19 @@ class WorkspaceDashboard(Gtk.Window):
         self.draw_hud_bar(cr, tl_x + 14, tl_y + 118, self.hud_width - 28, "TMP", self.core_temp, (250/255.0, 179/255.0, 135/255.0, 1.0))
         self.render_text(cr, tl_x + 14, tl_y + 168, self.hud_width - 28, 14, f"  {self.battery_detailed_info[:42]}", "JetBrainsMono NF 7", self.colors["hint"])
 
-        bl_x = 30
-        bl_y = tl_y + self.hud_base_height + 20
-        self.draw_corner_bounding_box(cr, bl_x, bl_y, self.hud_width, 85, hud_pen_color, (focused_group == "battery_profile"))
+        bl_x = cx - 820
+        bl_y = tl_y + self.hud_base_height + 10
+        
+        if focused_group == "battery_profile":
+            cr.set_source_rgba(166/255.0, 227/255.0, 161/255.0, 0.4)
+            cr.set_line_width(1.5)
+            cr.arc(cx, cy, 715, 165 * math.pi / 180, 187 * math.pi / 180)
+            cr.stroke()
+            
         self.render_text(cr, bl_x + 14, bl_y + 10, 180, 15, "   BATTERY PROFILE", "JetBrainsMono NF Bold 9", self.colors["accent"])
         
         p_saver_x, p_perf_x = bl_x + 14, bl_x + self.hud_width - 114
-        p_btn_y = bl_y + 40
+        p_btn_y = bl_y + 35
         p_btn_w, p_btn_h = 100, 30
         
         for p_key, label, px in [("profile:powersave", " POWERSAVER", p_saver_x), ("profile:performance", " PERFORMANCE", p_perf_x)]:
@@ -629,14 +647,18 @@ class WorkspaceDashboard(Gtk.Window):
                 cr.fill()
             self.render_text(cr, px + 14, p_btn_y + 8, p_btn_w, p_btn_h, label, "JetBrainsMono NF Bold 8", self.colors["text"])
 
-        # Power actions box directly beneath the battery profile module
-        pwr_y = bl_y + 85 + 20
-        is_pwr_focused = (focused_group == "power_menu")
-        self.draw_corner_bounding_box(cr, bl_x, pwr_y, self.hud_width, 70, hud_pen_color, is_pwr_focused)
-        self.render_text(cr, bl_x + 14, pwr_y + 10, self.hud_width - 28, 15, "   POWER MANAGEMENT", "JetBrainsMono NF Bold 9", self.colors["accent"])
+        pwr_x = cx - 810
+        pwr_y = bl_y + 75 + 10
+        if focused_group == "power_menu":
+            cr.set_source_rgba(166/255.0, 227/255.0, 161/255.0, 0.4)
+            cr.set_line_width(1.5)
+            cr.arc(cx, cy, 715, 189 * math.pi / 180, 211 * math.pi / 180)
+            cr.stroke()
+            
+        self.render_text(cr, pwr_x + 14, pwr_y + 10, self.hud_width - 28, 15, "   POWER MANAGEMENT", "JetBrainsMono NF Bold 9", self.colors["accent"])
 
         p_btn_w, p_btn_h, p_pad = 40, 28, 6
-        p_start_x, p_start_y = bl_x + 13, pwr_y + 32
+        p_start_x, p_start_y = pwr_x + 13, pwr_y + 32
 
         for i, act in enumerate(self.power_actions):
             icon, name, _ = act
@@ -660,9 +682,15 @@ class WorkspaceDashboard(Gtk.Window):
                 
             self.render_text(cr, bx, p_start_y + 2, p_btn_w, p_btn_h, icon, "JetBrainsMono NF Bold 12", self.colors["text"], "center")
 
-        tr_x = self.get_allocated_width() - self.hud_width - 30
-        tr_y = 30
-        self.draw_corner_bounding_box(cr, tr_x, tr_y, self.hud_width, self.hud_base_height, hud_pen_color, False)
+        nav_bl_y = pwr_y + 75
+        self.render_text(cr, cx - 785, nav_bl_y + 15, self.hud_width - 28, 18, "   NAVIGATION MAP", "JetBrainsMono NF Bold 9", self.colors["accent"])
+        self.render_text(cr, cx - 785, nav_bl_y + 35, self.hud_width - 28, 14, "  Press [ H ] or [ ? ] key to slide out manual", "SansSerif 8", self.colors["hint"])
+
+        # Draw Right Half Moon (Border line weight logic bypassed)
+        self.draw_curved_orbit_panel(cr, cx, cy, 580, 840, -35 * math.pi / 180, 35 * math.pi / 180, hud_pen_color, False)
+
+        tr_x = cx + 550
+        tr_y = cy - 230
         
         now_dt = datetime.datetime.now()
         self.render_text(cr, tr_x + 14, tr_y + 10, self.hud_width - 64, 40, now_dt.strftime("%H:%M"), "SansSerif 24", self.colors["text"], "right")
@@ -684,15 +712,20 @@ class WorkspaceDashboard(Gtk.Window):
         self.render_text(cr, mid_split_x, text_y_row1, 110, 16, f"WK: {self.week_num_str} / 52", "JetBrainsMono NF 8", self.colors["hint"], "right")
         self.render_text(cr, mid_split_x, text_y_row2, 110, 16, f" {self.lunar_icon}  {self.lunar_illum_pct}%", "JetBrainsMono NF 8", self.colors["hint"], "right")
 
-        hw_x = tr_x
-        hw_y_start = tr_y + self.hud_base_height + 20
+        hw_x = cx + 565
+        hw_y_start = tr_y + self.hud_base_height + 10
         hw_box_h = 70
         
         for idx, hw_type in enumerate(["vol", "bright"]):
             hy = hw_y_start + idx * (hw_box_h + 10)
             is_box_focused = (focused_group == f"{hw_type}_hud")
-            self.draw_corner_bounding_box(cr, hw_x, hy, self.hud_width, hw_box_h, hud_pen_color, is_box_focused)
             
+            if is_box_focused:
+                cr.set_source_rgba(166/255.0, 227/255.0, 161/255.0, 0.4)
+                cr.set_line_width(1.5)
+                cr.arc(cx, cy, 715, (-10 + idx * 11) * math.pi / 180, (-1 + idx * 11) * math.pi / 180)
+                cr.stroke()
+                
             btn_w = 45
             btn_up_key = f"hw:{hw_type}:up"
             btn_down_key = f"hw:{hw_type}:down"
@@ -722,14 +755,18 @@ class WorkspaceDashboard(Gtk.Window):
                     cr.fill()
                 self.render_text(cr, bx + 12, by + 6, bw, bh, label, "JetBrainsMono NF Bold 9", self.colors["text"])
 
-        # Custom Launcher sits bellow volume and brightness modules
-        tasks_y = hw_y_start + 2 * (hw_box_h + 15)
-        is_tasks_focused = (focused_group == "custom_tasks")
-        self.draw_corner_bounding_box(cr, tr_x, tasks_y, self.hud_width, 105, hud_pen_color, is_tasks_focused)
-        self.render_text(cr, tr_x + 14, tasks_y + 10, self.hud_width - 28, 20, "  CUSTOM LAUNCHER", "JetBrainsMono NF Bold 9", self.colors["accent"])
+        tasks_x = cx + 550
+        tasks_y = hw_y_start + 2 * (hw_box_h + 10) + 5
+        if focused_group == "custom_tasks":
+            cr.set_source_rgba(166/255.0, 227/255.0, 161/255.0, 0.4)
+            cr.set_line_width(1.5)
+            cr.arc(cx, cy, 715, 12 * math.pi / 180, 32 * math.pi / 180)
+            cr.stroke()
+            
+        self.render_text(cr, tasks_x + 14, tasks_y + 10, self.hud_width - 28, 20, "  CUSTOM LAUNCHER", "JetBrainsMono NF Bold 9", self.colors["accent"])
 
         btn_w, btn_h, pad_x, pad_y = 46, 28, 8, 8
-        start_x, start_y = tr_x + 18, tasks_y + 32
+        start_x, start_y = tasks_x + 18, tasks_y + 32
         
         for i, t in enumerate(self.custom_tools):
             icon, tid, _ = t
@@ -759,7 +796,6 @@ class WorkspaceDashboard(Gtk.Window):
                 cr.set_source_rgba(*self.colors["bg"])
                 cr.fill()
                 
-            # Connection status modifications to the icon color
             if tid == "wifi" and self.wifi_connected:
                 icon_color = (166/255.0, 227/255.0, 161/255.0, 1.0)
             elif tid == "bt" and self.bt_connected:
@@ -769,26 +805,9 @@ class WorkspaceDashboard(Gtk.Window):
                 
             self.render_text(cr, bx, by + 4, btn_w, btn_h, icon, "JetBrainsMono NF Bold 12", icon_color, "center")
             
-        nav_bl_y = self.get_allocated_height() - 140 - 30
-        self.draw_corner_bounding_box(cr, 30, nav_bl_y, self.hud_width, 140, hud_pen_color, False)
-        self.render_text(cr, 44, nav_bl_y + 14, 180, 20, "   NAVIGATION MAP", "JetBrainsMono NF Bold 9", self.colors["accent"])
-        self.render_text(cr, 44, nav_bl_y + 44, self.hud_width - 28, 18, "Press [ H ] or [ ? ] key", "SansSerif 9", self.colors["hint"])
-        self.render_text(cr, 44, nav_bl_y + 68, self.hud_width - 28, 18, "to slide out guidance manual", "SansSerif 9", self.colors["hint"])
-
-        nav_br_y = self.get_allocated_height() - 140 - 30
-        self.draw_corner_bounding_box(cr, tr_x, nav_br_y, self.hud_width, 140, hud_pen_color, False)
-        self.render_text(cr, tr_x + 14, nav_br_y + 14, self.hud_width - 28, 20, "   SESSION METRICS", "JetBrainsMono NF Bold 9", self.colors["accent"], "right")
-        self.render_text(cr, tr_x + 14, nav_br_y + 44, self.hud_width - 28, 18, f"open windows: {self.total_windows_count}", "SansSerif 9", self.colors["hint"], "right")
-        self.render_text(cr, tr_x + 14, nav_br_y + 68, self.hud_width - 28, 18, f"system uptime: {self.uptime_str}", "SansSerif 9", self.colors["hint"], "right")
-        
-        cr.set_source_rgba(self.colors["text"][0], self.colors["text"][1], self.colors["text"][2], 0.15)
-        cr.set_line_width(0.8)
-        cr.move_to(tr_x + 14, nav_br_y + 102)
-        cr.line_to(tr_x + self.hud_width - 14, nav_br_y + 102)
-        cr.stroke()
-        
-        tracker_txt = f"  TRACKER: {self.tracker_status_str}"
-        self.render_text(cr, tr_x + 14, nav_br_y + 112, self.hud_width - 28, 18, tracker_txt[:38], "JetBrainsMono NF Bold 8", self.colors["text"], "right")
+        nav_br_y = tasks_y + 115
+        self.render_text(cr, cx + 535, nav_br_y + 5, self.hud_width - 28, 14, f"windows: {self.total_windows_count}  |  uptime: {self.uptime_str}", "SansSerif 8", self.colors["hint"], "right")
+        self.render_text(cr, cx + 535, nav_br_y + 22, self.hud_width - 28, 14, f"TRACKER: {self.tracker_status_str}", "JetBrainsMono NF Bold 8", self.colors["text"], "right")
 
         self.draw_helper_drawer_panel(cr)
 
@@ -815,64 +834,78 @@ class WorkspaceDashboard(Gtk.Window):
             return False
         x, y = event.x, event.y
         
-        tl_y = 30
-        bl_x = 30
-        bl_y = tl_y + self.hud_base_height + 20
-        p_saver_x = bl_x + 14
-        p_perf_x = bl_x + self.hud_width - 114
-        p_btn_y = bl_y + 40
-        p_btn_w, p_btn_h = 100, 30
+        cx = self.get_allocated_width() / 2.0
+        cy = self.get_allocated_height() / 2.0
+        dx = x - cx
+        dy = y - cy
+        radial_distance = math.sqrt(dx*dx + dy*dy)
+        polar_angle = math.atan2(dy, dx)
         
-        if p_btn_y <= y <= p_btn_y + p_btn_h:
-            if p_saver_x <= x <= p_saver_x + p_btn_w:
-                self.execute_option("profile:powersave")
-                return True
-            if p_perf_x <= x <= p_perf_x + p_btn_w:
-                self.execute_option("profile:performance")
-                return True
-                
-        pwr_y = bl_y + 85 + 20
-        p_btn_w, p_btn_h, p_pad = 40, 28, 6
-        p_start_x, p_start_y = bl_x + 13, pwr_y + 32
-        
-        if p_start_y <= y <= p_start_y + p_btn_h:
-            for i, act in enumerate(self.power_actions):
-                bx = p_start_x + i * (p_btn_w + p_pad)
-                if bx <= x <= bx + p_btn_w:
-                    self.execute_option(f"power:{act[1]}")
-                    return True
-                
-        tr_x = self.get_allocated_width() - self.hud_width - 30
-        hw_y_start = 30 + self.hud_base_height + 20
-        hw_box_h = 70
-        
-        for idx, hw_type in enumerate(["vol", "bright"]):
-            hy = hw_y_start + idx * (hw_box_h + 15)
-            bx_up = tr_x + self.hud_width - 105
-            bx_dn = tr_x + self.hud_width - 55
-            by = hy + 20
-            bw, bh = 45, 30
+        if polar_angle < 0:
+            polar_angle += 2 * math.pi
             
-            if by <= y <= by + bh:
-                if bx_up <= x <= bx_up + bw:
-                    self.execute_option(f"hw:{hw_type}:up")
+        if 580 <= radial_distance <= 840 and (145 * math.pi / 180) <= polar_angle <= (215 * math.pi / 180):
+            tl_y = cy - 170
+            bl_x = cx - 820
+            bl_y = tl_y + self.hud_base_height + 10
+            p_saver_x = bl_x + 14
+            p_perf_x = bl_x + self.hud_width - 114
+            p_btn_y = bl_y + 35
+            p_btn_w, p_btn_h = 100, 30
+            
+            if p_btn_y <= y <= p_btn_y + p_btn_h:
+                if p_saver_x <= x <= p_saver_x + p_btn_w:
+                    self.execute_option("profile:powersave")
                     return True
-                if bx_dn <= x <= bx_dn + bw:
-                    self.execute_option(f"hw:{hw_type}:down")
+                if p_perf_x <= x <= p_perf_x + p_btn_w:
+                    self.execute_option("profile:performance")
+                    return True
+                    
+            pwr_x = cx - 810
+            pwr_y = bl_y + 75 + 10
+            p_btn_w, p_btn_h, p_pad = 40, 28, 6
+            p_start_x, p_start_y = pwr_x + 13, pwr_y + 32
+            
+            if p_start_y <= y <= p_start_y + p_btn_h:
+                for i, act in enumerate(self.power_actions):
+                    bx = p_start_x + i * (p_btn_w + p_pad)
+                    if bx <= x <= bx + p_btn_w:
+                        self.execute_option(f"power:{act[1]}")
+                        return True
+                        
+        elif 580 <= radial_distance <= 840 and (polar_angle <= 35 * math.pi / 180 or polar_angle >= 325 * math.pi / 180):
+            tr_x = cx + 550
+            hw_y_start = cy - 230 + self.hud_base_height + 10
+            hw_box_h = 70
+            
+            for idx, hw_type in enumerate(["vol", "bright"]):
+                hw_x = cx + 565
+                hy = hw_y_start + idx * (hw_box_h + 10)
+                bx_up = hw_x + self.hud_width - 105
+                bx_dn = hw_x + self.hud_width - 55
+                by = hy + 20
+                bw, bh = 45, 30
+                
+                if by <= y <= by + bh:
+                    if bx_up <= x <= bx_up + bw:
+                        self.execute_option(f"hw:{hw_type}:up")
+                        return True
+                    if bx_dn <= x <= bx_dn + bw:
+                        self.execute_option(f"hw:{hw_type}:down")
+                        return True
+                        
+            tasks_y = hw_y_start + 2 * (hw_box_h + 10) + 5
+            btn_w, btn_h, pad_x, pad_y = 46, 28, 8, 8
+            start_x, start_y = tr_x + 18, tasks_y + 32
+            
+            for i, t in enumerate(self.custom_tools):
+                row, col = i // 4, i % 4
+                bx = start_x + col * (btn_w + pad_x)
+                by = start_y + row * (btn_h + pad_y)
+                if bx <= x <= bx + btn_w and by <= y <= by + btn_h:
+                    self.execute_option(f"task:{t[1]}")
                     return True
         return False
-        
-        tasks_y = hw_y_start + 2 * (hw_box_h + 15)
-        btn_w, btn_h, pad_x, pad_y = 46, 28, 8, 8
-        start_x, start_y = tr_x + 18, tasks_y + 32
-        
-        for i, t in enumerate(self.custom_tools):
-            row, col = i // 4, i % 4
-            bx = start_x + col * (btn_w + pad_x)
-            by = start_y + row * (btn_h + pad_y)
-            if bx <= x <= bx + btn_w and by <= y <= by + btn_h:
-                self.execute_option(f"task:{t[1]}")
-                return True
 
     def execute_option(self, target):
         if not target:
@@ -989,13 +1022,11 @@ class WorkspaceDashboard(Gtk.Window):
             return True
 
         elif keyname in ("equal", "plus"):
-            # Increase the view scale factor for the active selection box
             self.zoom_factor = min(2.0, self.zoom_factor + 0.25)
             self.queue_draw()
             return True
             
         elif keyname == "minus":
-            # Decrease the view scale factor back toward the standard dimension
             self.zoom_factor = max(1.0, self.zoom_factor - 0.25)
             self.queue_draw()
             return True
