@@ -609,12 +609,6 @@ class WorkspaceDashboard(Gtk.Window):
 
         bl_x = cx - 820
         bl_y = tl_y + self.hud_base_height + 10
-        
-        if focused_group == "battery_profile":
-            cr.set_source_rgba(166/255.0, 227/255.0, 161/255.0, 0.4)
-            cr.set_line_width(1.5)
-            cr.arc(cx, cy, 715, 165 * math.pi / 180, 187 * math.pi / 180)
-            cr.stroke()
             
         self.render_text(cr, bl_x + 14, bl_y + 10, 180, 15, "   BATTERY PROFILE", "JetBrainsMono NF Bold 9", self.colors["accent"])
         
@@ -649,11 +643,6 @@ class WorkspaceDashboard(Gtk.Window):
 
         pwr_x = cx - 810
         pwr_y = bl_y + 75 + 10
-        if focused_group == "power_menu":
-            cr.set_source_rgba(166/255.0, 227/255.0, 161/255.0, 0.4)
-            cr.set_line_width(1.5)
-            cr.arc(cx, cy, 715, 189 * math.pi / 180, 211 * math.pi / 180)
-            cr.stroke()
             
         self.render_text(cr, pwr_x + 14, pwr_y + 10, self.hud_width - 28, 15, "   POWER MANAGEMENT", "JetBrainsMono NF Bold 9", self.colors["accent"])
 
@@ -757,11 +746,6 @@ class WorkspaceDashboard(Gtk.Window):
 
         tasks_x = cx + 550
         tasks_y = hw_y_start + 2 * (hw_box_h + 10) + 5
-        if focused_group == "custom_tasks":
-            cr.set_source_rgba(166/255.0, 227/255.0, 161/255.0, 0.4)
-            cr.set_line_width(1.5)
-            cr.arc(cx, cy, 715, 12 * math.pi / 180, 32 * math.pi / 180)
-            cr.stroke()
             
         self.render_text(cr, tasks_x + 14, tasks_y + 10, self.hud_width - 28, 20, "  CUSTOM LAUNCHER", "JetBrainsMono NF Bold 9", self.colors["accent"])
 
