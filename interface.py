@@ -277,7 +277,7 @@ class WorkspaceDashboard(Gtk.Window):
         cr.close_path()
         
         bg_filled = list(self.colors["bg"])
-        bg_filled[3] = 0.92 if bg_filled[3] < 0.6 else 0.82
+        bg_filled[3] = 0.2 if bg_filled[3] < 0.6 else 0.82
         cr.set_source_rgba(*bg_filled)
         cr.fill()
         
